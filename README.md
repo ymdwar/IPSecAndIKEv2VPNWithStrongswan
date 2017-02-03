@@ -1,5 +1,11 @@
 # IPSecAndIKEv2VPNWithStrongswan
 
+如题，本人主要是为了适配CentOS7，修改历史如下：
+
+#### 第一次修改(20170203) 
+- 修改文件：IKEv2WithEAP-TLS.sh， 对centos7进行适配，具体修改见脚本的log。
+
+--- 
 相关链接
 
 [折腾搬瓦工–04–配置IPSec VPN](https://wbuntu.com/?p=224)
