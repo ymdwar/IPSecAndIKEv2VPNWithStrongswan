@@ -1,112 +1,125 @@
 #!/bin/sh
-apt-get update
-apt-get install strongswan strongswan-plugin-xauth-generic strongswan-plugin-eap-mschapv2 strongswan-plugin-eap-md5 -y
-#attention! domainName must be your server's domain name
-ipsec pki --gen --outform pem > caKey.pem
-ipsec pki --self --in caKey.pem --dn "C=CH, O=strongSwan, CN=strongSwan CA" --ca --outform pem > caCert.pem
-ipsec pki --gen --outform pem > serverKey.pem
-ipsec pki --pub --in serverKey.pem | ipsec pki --issue --cacert caCert.pem --cakey caKey.pem --dn "C=CH, O=strongSwan, CN=domainName" --san="domainName" --flag serverAuth --outform pem > serverCert.pem
-#you have to add a password for clientCert
-ipsec pki --gen --outform pem > clientKey.pem
-ipsec pki --pub --in clientKey.pem | ipsec pki --issue --cacert caCert.pem --cakey caKey.pem --dn "C=CH, O=strongSwan, CN=client" --outform pem > clientCert.pem
-openssl pkcs12 -export -inkey clientKey.pem -in clientCert.pem -name "client" -certfile caCert.pem -caname "strongSwan CA" -out clientCert.p12
 
-cp caCert.pem /etc/ipsec.d/cacerts/
-cp serverCert.pem /etc/ipsec.d/certs/
-cp serverKey.pem /etc/ipsec.d/private/
-cp clientCert.pem /etc/ipsec.d/certs/
-cp clientKey.pem /etc/ipsec.d/private/
+yum install -y strongswan 
 
-mkdir clientCerts
-cp caCert.pem clientCert.p12 clientCerts
-mkdir allCerts
-mv caKey.pem caCert.pem serverKey.pem serverCert.pem clientKey.pem clientCert.pem clientCert.p12 allCerts
+cert_dir="/etc/ssl.cert"
+cp -f $cert_dir/key.pem /etc/strongswan/ipsec.d/private/serverKey.pem
+cp -f $cert_dir/key.pem /etc/strongswan/ipsec.d/private/clientKey.pem
+cp -f $cert_dir/ca.pem /etc/strongswan/ipsec.d/cacerts/caCert.pem
+cp -f $cert_dir/cert.pem /etc/strongswan/ipsec.d/certs/server.cert.pem
+cp -f $cert_dir/cert.pem /etc/strongswan/ipsec.d/certs/client.cert.pem
 
-cat > /etc/ipsec.conf<<EOF
+cat > /etc/strongswan/ipsec.conf<<EOF
+# ipsec.conf - strongSwan IPsec configuration file
 config setup
-    uniqueids=never
-conn %default
-    ikelifetime=60m
-    keylife=20m
-    rekeymargin=3m
-    keyingtries=1
-    keyexchange=ike
-conn ikev1
+    uniqueids=never 
+
+conn iOS_cert
     keyexchange=ikev1
-    authby=xauthpsk
-    xauth=server
+    fragmentation=yes
     left=%defaultroute
-    leftsubnet=0.0.0.0/0
-    leftfirewall=yes
-    right=%any
-    rightsourceip=10.0.0.0/24
-    auto=add
-conn ikev2-eap-mschapv2
-    keyexchange=ikev2
     leftauth=pubkey
-    leftcert=serverCert.pem
-    leftid=@domainName
-    leftsendcert=always
-    left=%defaultroute
     leftsubnet=0.0.0.0/0
-    leftfirewall=yes
+    leftcert=server.cert.pem
+    right=%any
+    rightauth=pubkey
+    rightauth2=xauth
+    rightsourceip=10.31.2.0/24
+    rightcert=client.cert.pem
+    auto=add
+
+conn android_xauth_psk
+    keyexchange=ikev1
+    left=%defaultroute
+    leftauth=psk
+    leftsubnet=0.0.0.0/0
+    right=%any
+    rightauth=psk
+    rightauth2=xauth
+    rightsourceip=10.31.2.0/24
+    auto=add
+
+conn networkmanager-strongswan
+    keyexchange=ikev2
+    left=%defaultroute
+    leftauth=pubkey
+    leftsubnet=0.0.0.0/0
+    leftcert=server.cert.pem
+    right=%any
+    rightauth=pubkey
+    rightsourceip=10.31.2.0/24
+    rightcert=client.cert.pem
+    auto=add
+
+conn ios_ikev2
+    keyexchange=ikev2
+    ike=aes256-sha256-modp2048,3des-sha1-modp2048,aes256-sha1-modp2048!
+    esp=aes256-sha256,3des-sha1,aes256-sha1!
+    rekey=no
+    left=%defaultroute
+    leftid=${vps_ip}
+    leftsendcert=always
+    leftsubnet=0.0.0.0/0
+    leftcert=server.cert.pem
+    right=%any
     rightauth=eap-mschapv2
+    rightsourceip=10.31.2.0/24
+    rightsendcert=never
     eap_identity=%any
-    right=%any
-    rightsourceip=10.0.0.0/24
+    dpdaction=clear
+    fragmentation=yes
     auto=add
-conn ikev2-eap-md5
+
+conn windows7
     keyexchange=ikev2
-    leftauth=pubkey
-    leftcert=serverCert.pem
-    leftid=@domainName
-    leftsendcert=always
+    ike=aes256-sha1-modp1024!
+    rekey=no
     left=%defaultroute
+    leftauth=pubkey
     leftsubnet=0.0.0.0/0
-    leftfirewall=yes
-    rightauth=eap-md5
-    eap_identity=%any
+    leftcert=server.cert.pem
     right=%any
-    rightsourceip=10.0.0.0/24
+    rightauth=eap-mschapv2
+    rightsourceip=10.31.2.0/24
+    rightsendcert=never
+    eap_identity=%any
     auto=add
 EOF
 
-cat > /etc/strongswan.conf<<EOF
+cat > /etc/strongswan/strongswan.conf<<EOF
 charon {
-        duplicheck.enable = no
-        install_virtual_ip = yes
-        dns1 = 8.8.8.8
-        dns2 = 8.8.4.4
-        load_modular = yes
-        plugins {
-                include strongswan.d/charon/*.conf
-        }
+    load_modular = yes
+    duplicheck.enable = no
+    compress = yes
+    plugins {
+            include strongswan.d/charon/*.conf
+    }
+    dns1 = 8.8.8.8
+    dns2 = 8.8.4.4
+    nbns1 = 8.8.8.8
+    nbns2 = 8.8.4.4
 }
 
 include strongswan.d/*.conf
 EOF
 
-cat > /etc/ipsec.secrets<<EOF
+cat > /etc/strongswan/ipsec.secrets<<EOF
 : RSA serverKey.pem
-: PSK "YourPSKHere"
-accountNameHere : EAP "passwdForAccountHere"
-accountNameHere : XAUTH "passwdForAccountHere"
+: PSK "myPskPass"
+myUser  : EAP "myPass"
+myUser %any : XAUTH "myPass"
 EOF
 
-iptables -A INPUT -p esp -j ACCEPT
-iptables -A INPUT -p udp --dport 500 -j ACCEPT
-iptables -A INPUT -p udp --dport 4500 -j ACCEPT
-iptables -t nat -A POSTROUTING -s 10.0.0.0/24 -o eth0 -j MASQUERADE
-iptables -A FORWARD -s 10.0.0.0/24 -j ACCEPT
+if ! systemctl is-active firewalld > /dev/null; then
+    systemctl start firewalld.service
+fi
 
-iptables-save > /etc/iptables.rules
+firewall-cmd --permanent --add-service="ipsec"
+firewall-cmd --permanent --add-port=500/udp
+firewall-cmd --permanent --add-port=4500/udp
+firewall-cmd --permanent --add-masquerade
+firewall-cmd --reload
 
-cat > /etc/network/if-up.d/iptables<<EOF
-#!/bin/sh
-iptables-restore < /etc/iptables.rules
-ipsec start
-EOF
-
-chmod +x /etc/network/if-up.d/iptables
-
-ipsec restart
+systemctl enable strongswan.service
+systemctl start strongswan.service
+systemctl restart firewalld.service
