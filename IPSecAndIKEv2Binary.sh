@@ -1,13 +1,15 @@
 #!/bin/sh
-
 yum install -y strongswan 
 
-cert_dir="/etc/ssl.cert"
-cp -f $cert_dir/key.pem /etc/strongswan/ipsec.d/private/serverKey.pem
-cp -f $cert_dir/key.pem /etc/strongswan/ipsec.d/private/clientKey.pem
-cp -f $cert_dir/ca.pem /etc/strongswan/ipsec.d/cacerts/caCert.pem
-cp -f $cert_dir/cert.pem /etc/strongswan/ipsec.d/certs/server.cert.pem
-cp -f $cert_dir/cert.pem /etc/strongswan/ipsec.d/certs/client.cert.pem
+# my_key_file=your key file path
+# my_ca_file=your ca file path
+# my_cert_file=your cert file path
+
+cp -f $my_key_file /etc/strongswan/ipsec.d/private/serverKey.pem
+cp -f $my_key_file /etc/strongswan/ipsec.d/private/clientKey.pem
+cp -f $my_ca_file /etc/strongswan/ipsec.d/cacerts/caCert.pem
+cp -f $my_cert_file /etc/strongswan/ipsec.d/certs/server.cert.pem
+cp -f $my_cert_file /etc/strongswan/ipsec.d/certs/client.cert.pem
 
 cat > /etc/strongswan/ipsec.conf<<EOF
 # ipsec.conf - strongSwan IPsec configuration file
